@@ -3,3 +3,10 @@
 # Manually managing azure-functions-worker may cause unexpected issues
 
 azure-functions
+
+transformers==4.44.2
+torch==2.3.1
+pandas==2.1.2
+scikit-learn==1.2.2
+azure-storage-blob==12.23.1
+openai==1.45.0
