@@ -3,9 +3,9 @@ import os, json, logging as log
 from io import BytesIO
 
 # Create the BlobServiceClient object
-blob_service_client = BlobServiceClient.from_connection_string(os.getenv("AZURE_STORAGE_CONNECTION_STRING"))
+# blob_service_client = BlobServiceClient.from_connection_string(os.getenv("AZURE_STORAGE_CONNECTION_STRING"))
 
-def deleteAndSaveExcelDataToAzure(path: str, data, isBlobExist: True):
+def deleteAndSaveExcelDataToAzure(blob_service_client, path: str, data, isBlobExist: True):
     try:
         # Convert JSON data to bytes
         binary_data = json.dumps(data).encode('utf-8')

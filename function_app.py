@@ -4,10 +4,10 @@ import logging as log
 import torch, os, json
 from ai_files.AITrainingClass import TrainAIModel
 from utils.embeddingFunctions import embdeddingFunc
-from utils.AzureStorage import blob_service_client, deleteAndSaveExcelDataToAzure
+from utils.AzureStorage import deleteAndSaveExcelDataToAzure
+from azure.storage.blob import BlobServiceClient
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
-
 
 @app.route(route="hello")
 def hello(req: func.HttpRequest) -> func.HttpResponse:
@@ -25,7 +25,14 @@ def train(req: func.HttpRequest) -> func.HttpResponse:
     try:
         res = req.get_json()
 
-        head, tail = os.path.split(os.path.normpath(res["path"]))
+        path = str(res["path"]).replace("\\\\", "\\")
+
+        normalizedPath = os.path.normpath(path)
+
+        head, tail = os.path.split(normalizedPath)
+
+        # Create the BlobServiceClient object
+        blob_service_client = BlobServiceClient.from_connection_string(os.getenv("AZURE_STORAGE_CONNECTION_STRING"))
                 
         container = blob_service_client.get_container_client("excelfiles")
 
@@ -54,9 +61,11 @@ def train(req: func.HttpRequest) -> func.HttpResponse:
 
                 newPath = os.path.join(h, "training_data.csv")
 
+                log.info("change func 2")
+
                 isBlobExist = container.get_blob_client(newPath).exists()
 
-                deleteAndSaveExcelDataToAzure(newPath, encoded_df, isBlobExist)
+                deleteAndSaveExcelDataToAzure(blob_service_client, newPath, encoded_df, isBlobExist)
 
                 container.delete_blob(blob, delete_snapshots="include")
 
