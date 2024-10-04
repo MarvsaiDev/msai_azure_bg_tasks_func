@@ -33,8 +33,17 @@ def train(req: func.HttpRequest) -> func.HttpResponse:
 
         # Create the BlobServiceClient object
         blob_service_client = BlobServiceClient.from_connection_string(os.getenv("AZURE_STORAGE_CONNECTION_STRING"))
-                
-        container = blob_service_client.get_container_client("excelfiles")
+
+        ####################################################################
+        # creating container if not exists
+        containerName, temp = os.path.split(head)
+
+        containerName = extract_lowercase_and_numbers(containerName.lower()) + extract_lowercase_and_numbers(str(res["email"]))
+
+        get_or_create_container(blob_service_client, containerName)
+        ####################################################################
+
+        container = blob_service_client.get_container_client(containerName)
 
         blobs = container.list_blob_names()
 
@@ -65,7 +74,7 @@ def train(req: func.HttpRequest) -> func.HttpResponse:
 
                 isBlobExist = container.get_blob_client(newPath).exists()
 
-                deleteAndSaveExcelDataToAzure(blob_service_client, newPath, encoded_df, isBlobExist)
+                deleteAndSaveExcelDataToAzure(blob_service_client, newPath, encoded_df, isBlobExist, containerName)
 
                 container.delete_blob(blob, delete_snapshots="include")
 
@@ -89,6 +98,16 @@ async def trainingFunc(df, current_user, embedder, path, label, db):
     except Exception as e:
         log.info(e)
         return {"training": "failed"}
+
+def extract_lowercase_and_numbers(input_string):
+    result = ''.join(char for char in input_string if char.islower() or char.isdigit())
+    return result
+
+def get_or_create_container(blob_service_client, container_name):
+    try:
+        blob_service_client.create_container(container_name)
+    except Exception as e:
+        print(f"the exception for creating container {e}")
 
 
 async def saving_model_and_data_in_tables(AIModel: TrainAIModel, filePath: str, label: str, embedder:str, current_user, db):
