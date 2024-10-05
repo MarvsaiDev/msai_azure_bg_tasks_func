@@ -1,0 +1,1 @@
+RABBITMQ_SETTINGS = "amqp://guest:guest@52.146.93.172//"

@@ -6,6 +6,7 @@ from ai_files.AITrainingClass import TrainAIModel
 from utils.embeddingFunctions import embdeddingFunc
 from utils.AzureStorage import deleteAndSaveExcelDataToAzure
 from azure.storage.blob import BlobServiceClient
+from utils.RabbitMQ import publishMsgOnRabbitMQ
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
@@ -19,7 +20,7 @@ def hello(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 @app.route(route="train_AIModel")
-def train(req: func.HttpRequest) -> func.HttpResponse:
+async def train(req: func.HttpRequest) -> func.HttpResponse:
     log.info("Training function")
 
     try:
@@ -36,11 +37,16 @@ def train(req: func.HttpRequest) -> func.HttpResponse:
 
         ####################################################################
         # creating container if not exists
+        await publishMsgOnRabbitMQ({"container": "creating"}, res["email"])
+
         containerName, temp = os.path.split(head)
 
         containerName = extract_lowercase_and_numbers(containerName.lower()) + extract_lowercase_and_numbers(str(res["email"]))
 
         get_or_create_container(blob_service_client, containerName)
+
+        await publishMsgOnRabbitMQ({"container": "created"}, res["email"])
+
         ####################################################################
 
         container = blob_service_client.get_container_client(containerName)
@@ -66,7 +72,13 @@ def train(req: func.HttpRequest) -> func.HttpResponse:
 
                 selectedColumnIndex = int(res["columnNum"]) - 1
 
+                await publishMsgOnRabbitMQ({"embedding on blob": str(blob)}, res["email"])
+
+
                 encoded_df = embdeddingFunc(df, embedder=res["embedder"], columns=columns, selectedColumnIndex=selectedColumnIndex)
+
+                await publishMsgOnRabbitMQ({"embedding done on": str(blob)}, res["email"])
+
 
                 newPath = os.path.join(h, "training_data.csv")
 
@@ -74,14 +86,20 @@ def train(req: func.HttpRequest) -> func.HttpResponse:
 
                 isBlobExist = container.get_blob_client(newPath).exists()
 
+                await publishMsgOnRabbitMQ({"saving embedded blob: ": str(blob)}, res["email"])
+
                 deleteAndSaveExcelDataToAzure(blob_service_client, newPath, encoded_df, isBlobExist, containerName)
+
+                await publishMsgOnRabbitMQ({"deleted blob: ": str(blob)}, res["email"])
 
                 container.delete_blob(blob, delete_snapshots="include")
 
+        await publishMsgOnRabbitMQ({"final": json.dumps(res)}, res["email"])
         return func.HttpResponse(json.dumps(res), status_code=200)
 
     except Exception as e:
         log.info("json error: " + str(e))
+        await publishMsgOnRabbitMQ({"error": str(e)}, res["email"])
         return func.HttpResponse("json error: " + str(e), status_code=200)
 
 async def trainingFunc(df, current_user, embedder, path, label, db):
@@ -105,7 +123,8 @@ def extract_lowercase_and_numbers(input_string):
 
 def get_or_create_container(blob_service_client, container_name):
     try:
-        blob_service_client.create_container(container_name)
+        LimitedContainerName = container_name[: 62]
+        blob_service_client.create_container(LimitedContainerName)
     except Exception as e:
         print(f"the exception for creating container {e}")
 
