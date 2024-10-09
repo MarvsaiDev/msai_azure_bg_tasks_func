@@ -19,7 +19,7 @@ def hello(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="train_AIModel")
 async def train(req: func.HttpRequest) -> func.HttpResponse:
-    log.info("Training function: 23")
+    log.info("Training function: 29")
 
     try:
         ###################################################################
@@ -91,7 +91,6 @@ async def train(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse("Tasks started", status_code=200)
 
     except Exception as e:
-        log.info("json error: " + str(e))
+        log.error("json error: " + e)
         await publishMsgOnRabbitMQ({"error": str(e)}, res["email"])
-        return func.HttpResponse("json error: " + str(e), status_code=200)
-
+        raise e
