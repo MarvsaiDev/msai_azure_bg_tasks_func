@@ -2,6 +2,7 @@ import azure.functions as func
 import pandas as pd
 import logging as log
 import os, json
+import asyncio
 from azure.storage.blob import BlobServiceClient
 from utils.RabbitMQ import publishMsgOnRabbitMQ
 from utils.utilityFunctions import EmbeddingFile, extract_lowercase_and_numbers, get_or_create_container, trainingFunc
@@ -19,13 +20,28 @@ def hello(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="train_AIModel")
 async def train(req: func.HttpRequest) -> func.HttpResponse:
-    log.info("Training function: 29")
+    log.info("Training function: 31")
+    try:
+        res = req.get_json()
 
+        response = func.HttpResponse("Tasks started", status_code=200)
+
+        asyncio.create_task(trainRouteFunc(res))
+
+        return response
+        
+    except Exception as e:
+        log.error("error: ")
+        log.error(e)
+        raise e
+
+    
+
+
+async def trainRouteFunc(res):
     try:
         ###################################################################
         # path validation 
-        res = req.get_json()
-
         path = str(res["path"]).replace("\\\\", "\\")
 
         normalizedPath = os.path.normpath(path)
@@ -87,8 +103,6 @@ async def train(req: func.HttpRequest) -> func.HttpResponse:
         await trainingFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"])
 
         blob_client.delete_blob(delete_snapshots="include")
-
-        return func.HttpResponse("Tasks started", status_code=200)
 
     except Exception as e:
         log.error("json error: " + e)
