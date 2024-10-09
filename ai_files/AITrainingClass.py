@@ -5,6 +5,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch import nn, optim
 from sklearn.metrics import confusion_matrix
 
+from utils.RabbitMQ import publishMsgOnRabbitMQ
 from utils.custom_ai.net_model import Attention, CustomClassifier, CustomClassifierEmb, CustomClassifierEmb2, CustomClassifierEmbLN, CustomClassifierNorm, EnsembleModel, Net2, Net2EmbNorm, Net4, ResidualBlock, weights_init
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
@@ -88,7 +89,7 @@ class TrainAIModel:
         self.true_labels = []
         self.pred_labels = []
 
-    async def train_model(self):
+    async def train_model(self, email):
         self.__encode_target__()
         self.__split_df__(self.df)
         self.__define_model__()
@@ -142,6 +143,8 @@ class TrainAIModel:
 
             accuracy = correct / total
             percentage = (epoch + 1) / NO_EPOCHS * 100
+
+            await publishMsgOnRabbitMQ({"task": "training", "condition": "continue", "percentage": str(percentage)}, email)
 
             logging.info(f'Epoch {epoch + 1}, Loss: {loss.item()}, Validation Accuracy: {accuracy}')
 

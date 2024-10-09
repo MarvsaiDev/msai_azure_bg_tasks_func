@@ -12,3 +12,5 @@ azure-storage-blob==12.23.1
 azure-identity==1.18.0
 openai==1.45.0
 aio-pika==9.4.3
+SQLAlchemy==2.0.35
+pyodbc==5.1.0
