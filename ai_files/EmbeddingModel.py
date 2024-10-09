@@ -4,6 +4,7 @@ from transformers import AutoTokenizer, AutoModel
 import torch
 import openai
 from transformers import AutoTokenizer, AutoModel
+# from utils.AzureStorage import blob_service_client
 
 class AbstractEmbeddingModel(ABC):
     filename = "modelBGE.pth"
@@ -20,18 +21,16 @@ class BAIEmbeddingModel(AbstractEmbeddingModel):
 
 
     def __init__(self, model_name='BGE',classifier_module='custom_ai.ai', classifier_class='CustomClassifier', local_files_only=False):
-        if not local_files_only:
-            self.tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3")
-            self.model = AutoModel.from_pretrained("BAAI/bge-m3")
-            self.tokenizer.save_pretrained("./model_data/bgetoken")
-            self.model.save_pretrained("./model_data/bgemodel")
-        else:
-            self.tokenizer = AutoTokenizer.from_pretrained("./model_data/bgetoken", local_files_only=local_files_only)
-            self.model = AutoModel.from_pretrained("./model_data/bgemodel", local_files_only=local_files_only)
-
-
-        # module = importlib.import_module(classifier_module)
-        # self.classifier = getattr(module, classifier_class)
+        self.tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3")
+        self.model = AutoModel.from_pretrained("BAAI/bge-m3")
+        # if not local_files_only:
+        #     self.tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3")
+        #     self.model = AutoModel.from_pretrained("BAAI/bge-m3")
+        #     # self.tokenizer.save_pretrained("./model_data/bgetoken")
+        #     # self.model.save_pretrained("./model_data/bgemodel")
+        # else:
+        #     self.tokenizer = AutoTokenizer.from_pretrained("./model_data/bgetoken", local_files_only=local_files_only)
+        #     self.model = AutoModel.from_pretrained("./model_data/bgemodel", local_files_only=local_files_only)
 
 
     def get_embedding(self, text):
@@ -52,6 +51,21 @@ class BAIEmbeddingModel(AbstractEmbeddingModel):
         embeddings = outputs.last_hidden_state
         embeddings = torch.mean(embeddings, dim=1)
         return embeddings.detach().numpy()
+
+    # def download_model_data(self):
+    #     container_name = "transformermodeldata"
+    #     folders = ["bgemodel", "bgetoken"]
+
+    #     for folder in folders:
+    #         blob_list = blob_service_client.get_container_client(container_name).list_blobs(name_starts_with=folder)
+    #         for blob in blob_list:
+    #             blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob.name)
+    #             download_file_path = os.path.join("./model_data", blob.name)
+    #             os.makedirs(os.path.dirname(download_file_path), exist_ok=True)
+    #             with open(download_file_path, "wb") as download_file:
+    #                 download_file.write(blob_client.download_blob().readall())
+
+
 
 class OpenAIEmbeddingModel(AbstractEmbeddingModel):
     filename = "model2x.pth"

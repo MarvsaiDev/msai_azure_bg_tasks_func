@@ -35,20 +35,21 @@ def embeddingTexts(arr, embedder="OpenAI"):
 
     return data
 
-def embdeddingFunc(df, embedder="OpenAI", columns = [], selectedColumnIndex = 0):
+def embdeddingFunc(df, h, embedder="OpenAI", columns = [], selectedColumnIndex = 0):
     log.info("embedding start")
     data = []
 
     targetColumns = []
     rowTexts = []
     targetColumnName = ""
-    headers = []
+    headers = h
     for idx, row in df.iterrows():
         if (idx == 0):
-            targetColumnName = str(row.get(selectedColumnIndex))
-            headers = row.array
-            
-            continue
+            if (len(headers) < 1):
+                headers = row.array
+                targetColumnName = str(row.get(selectedColumnIndex))
+            else:
+                targetColumnName = headers[selectedColumnIndex]          
 
         fileText = ''
 
@@ -59,6 +60,10 @@ def embdeddingFunc(df, embedder="OpenAI", columns = [], selectedColumnIndex = 0)
                 selectedColumnName = col
 
         fileText = targetColumnName + ": " + str(row.get(selectedColumnName)) + " |" + fileText
+
+        if(idx == 1):
+            log.info("file text value: ")
+            log.info(fileText)
 
         targetColumns.append(str(row.get(selectedColumnName)))
         rowTexts.append(fileText)
@@ -77,7 +82,7 @@ def embdeddingFunc(df, embedder="OpenAI", columns = [], selectedColumnIndex = 0)
             targetColumns = []
             rowTexts = []
 
-    return data
+    return data, headers
 
 def embeddingFuncForInference(df, embedder="OpenAI", columns = []):
     data = []

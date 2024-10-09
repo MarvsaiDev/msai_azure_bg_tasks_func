@@ -1,99 +1,96 @@
 import azure.functions as func
 import pandas as pd
 import logging as log
-import torch, os, json
-from ai_files.AITrainingClass import TrainAIModel
-from utils.embeddingFunctions import embdeddingFunc
-from utils.AzureStorage import blob_service_client, deleteAndSaveExcelDataToAzure
+import os, json
+from azure.storage.blob import BlobServiceClient
+from utils.RabbitMQ import publishMsgOnRabbitMQ
+from utils.utilityFunctions import EmbeddingFile, extract_lowercase_and_numbers, get_or_create_container, trainingFunc
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
-
 
 @app.route(route="hello")
 def hello(req: func.HttpRequest) -> func.HttpResponse:
     log.info('Python HTTP trigger function processed a request.')
 
     return func.HttpResponse(
-            "Http azure function is working",
-            status_code=200
+        "Http azure function is working",
+        status_code=200
     )
 
 @app.route(route="train_AIModel")
-def train(req: func.HttpRequest) -> func.HttpResponse:
-    log.info("Training function")
+async def train(req: func.HttpRequest) -> func.HttpResponse:
+    log.info("Training function: 29")
 
     try:
+        ###################################################################
+        # path validation 
         res = req.get_json()
 
-        head, tail = os.path.split(os.path.normpath(res["path"]))
-                
-        container = blob_service_client.get_container_client("excelfiles")
+        path = str(res["path"]).replace("\\\\", "\\")
 
-        blobs = container.list_blob_names()
+        normalizedPath = os.path.normpath(path)
 
-        for blob in blobs:
-            h, t = os.path.split(os.path.normpath(blob))
+        head, tail = os.path.split(normalizedPath)
 
-            if (h == head):
-                blob_client = container.get_blob_client(blob)
-                blob_data = blob_client.download_blob().readall()
+        await publishMsgOnRabbitMQ({"head from which i am checking the container or directory: ": str(head)}, res["email"])
 
-                # Decode binary data to string
-                blob_str = blob_data.decode('utf-8')
-                
-                # Convert string to Python list
-                blob_list = json.loads(blob_str)
+        # Create the BlobServiceClient object
+        blob_service_client = BlobServiceClient.from_connection_string(os.getenv("AZURE_STORAGE_CONNECTION_STRING"))
 
-                df = pd.DataFrame(blob_list)
+        ####################################################################
+        # creating container if not exists, create container with name
+        await publishMsgOnRabbitMQ({"container": "creating"}, res["email"])
 
-                columns = df.columns
+        containerName, temp = os.path.split(head)
 
-                selectedColumnIndex = int(res["columnNum"]) - 1
+        containerName = extract_lowercase_and_numbers(containerName.lower()) + extract_lowercase_and_numbers(str(res["email"]))
 
-                encoded_df = embdeddingFunc(df, embedder=res["embedder"], columns=columns, selectedColumnIndex=selectedColumnIndex)
+        if (len(containerName) > 62):
+            containerName = containerName[: 62]
 
-                newPath = os.path.join(h, "training_data.csv")
+        get_or_create_container(blob_service_client, containerName)
 
-                isBlobExist = container.get_blob_client(newPath).exists()
+        await publishMsgOnRabbitMQ({"container": "created", "container_name": containerName}, res["email"])
 
-                deleteAndSaveExcelDataToAzure(newPath, encoded_df, isBlobExist)
+        ####################################################################
+        # get container client
+        container = blob_service_client.get_container_client(containerName)
 
-                container.delete_blob(blob, delete_snapshots="include")
+        # Embedding the file (which is saved in chunks) and saving file on path with training_data.csv file
+        pathsOfTrainingFiles = await EmbeddingFile(blob_service_client, containerName, container, head, res)
 
-        return func.HttpResponse(json.dumps(res), status_code=200)
+        await publishMsgOnRabbitMQ({"task": "training", "condition": "preparing"}, res["email"])
+
+        if (len(pathsOfTrainingFiles) < 1):
+            await publishMsgOnRabbitMQ({"error": "Embedding function returned empty"}, res["email"])
+            return 
+
+        ####################################################################
+
+        df = pd.DataFrame()
+
+        for path in pathsOfTrainingFiles:
+            # getting the blob
+            blob_client = container.get_blob_client(path)
+            # get the blob data
+            blob_data = blob_client.download_blob().readall()
+
+            # Decode binary data to string from blob
+            blob_str = blob_data.decode('utf-8')
+            
+            # Convert string to Python list
+            blob_list = json.loads(blob_str)
+
+            # creating and merging data frame from list
+            df = pd.concat([df, pd.DataFrame(blob_list)], ignore_index=True)
+
+        await trainingFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"])
+
+        blob_client.delete_blob(delete_snapshots="include")
+
+        return func.HttpResponse("Tasks started", status_code=200)
 
     except Exception as e:
-        log.info("json error: " + str(e))
-        return func.HttpResponse("json error: " + str(e), status_code=200)
-
-async def trainingFunc(df, current_user, embedder, path, label, db):
-    try:
-        # selectedColumnIndex = int(columnNum) - 1
-        selectedColumnName = df.columns[0]
-       
-        AIModel = TrainAIModel(selectedColumnName, df, encodedClasses=None, mode="train")
-
-        await AIModel.train_model(current_user.email)
-
-        return {"training": "complete"}
-
-    except Exception as e:
-        log.info(e)
-        return {"training": "failed"}
-
-
-async def saving_model_and_data_in_tables(AIModel: TrainAIModel, filePath: str, label: str, embedder:str, current_user, db):
-    # saving models data
-    AIModel_data_filePath = os.path.join(filePath, 'model_data.pt')
-    torch.save(AIModel.model.state_dict(), AIModel_data_filePath)
-
-    return {
-        "model_data": AIModel.model.state_dict(),
-        "model_optimizer_data": AIModel.optimizer.state_dict(),
-        "data": {
-            "encodedClasses": {int(key): colName for key, colName in AIModel.classesWithEncoding.items()},
-            "embedder": embedder,
-            "targetColumn": AIModel.targetColumnName,
-            "AIMODELTYPE": AIModel.modelType
-        }
-    }
+        log.error("json error: " + e)
+        await publishMsgOnRabbitMQ({"error": str(e)}, res["email"])
+        raise e
