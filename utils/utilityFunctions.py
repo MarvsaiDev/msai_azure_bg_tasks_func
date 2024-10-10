@@ -87,9 +87,9 @@ async def EmbeddingFile(blob_service_client, containerName, container, head, res
     else:
         await publishMsgOnRabbitMQ({"task": "embedding", "condition": "completed"}, res["email"])
 
-    return pathsOfTrainingData
+    return pathsOfTrainingData, headers.tolist()
 
-async def trainingFunc(df, email, container, embeddingFilePath, embedder, label, id, epochsNumbers):
+async def trainingFunc(df, email, container, embeddingFilePath, embedder, label, id, epochsNumbers, headers):
     try:
         # selectedColumnIndex = int(columnNum) - 1
         selectedColumnName = df.columns[0]
@@ -101,7 +101,7 @@ async def trainingFunc(df, email, container, embeddingFilePath, embedder, label,
 
         await AIModel.train_model(email, epochsNumbers)
 
-        await saving_model_data(AIModel, embedder, container, embeddingFilePath, email, label, id)
+        await saving_model_data(AIModel, embedder, container, embeddingFilePath, email, label, id, headers)
 
         await publishMsgOnRabbitMQ({"task": "complete"}, email)
 
@@ -120,35 +120,46 @@ def get_or_create_container(blob_service_client, container_name):
         print(f"the exception for creating container {e}")
 
 
-async def saving_model_data(AIModel: TrainAIModel, embedder:str, container, embeddingFilePath, email, label, id):
-    await publishMsgOnRabbitMQ({"task": "saving", "condition": "continue"}, email)
+async def saving_model_data(AIModel: TrainAIModel, embedder:str, container, embeddingFilePath, email, label, id, headers = []):
+    try:
+        await publishMsgOnRabbitMQ({"task": "saving", "condition": "continue"}, email)
 
-    head, tail = os.path.split(embeddingFilePath)
-    
-    # Saving model data directly to Azure Blob Storage
-    model_data = BytesIO()
-    torch.save(AIModel.model.state_dict(), model_data)
-    model_data.seek(0)
-    await upload_blob(container, model_data, os.path.join(head, "model_data.pt"))
+        head, tail = os.path.split(embeddingFilePath)
+        
+        # Saving model data directly to Azure Blob Storage
+        model_data = BytesIO()
+        torch.save(AIModel.model.state_dict(), model_data)
+        model_data.seek(0)
+        await upload_blob(container, model_data, os.path.join(head, "model_data.pt"))
 
-    # Saving model optimizer data directly to Azure Blob Storage
-    optimizer_data = BytesIO()
-    torch.save(AIModel.optimizer.state_dict(), optimizer_data)
-    optimizer_data.seek(0)
-    await upload_blob(container, optimizer_data, os.path.join(head, "model_opti_data.pt"))
+        # Saving model optimizer data directly to Azure Blob Storage
+        optimizer_data = BytesIO()
+        torch.save(AIModel.optimizer.state_dict(), optimizer_data)
+        optimizer_data.seek(0)
+        await upload_blob(container, optimizer_data, os.path.join(head, "model_opti_data.pt"))
 
-    
-    # Saving classes name with encoding directly to Azure Blob Storage
-    classes_data = {
-        "encodedClasses": {int(key): colName for key, colName in AIModel.classesWithEncoding.items()},
-        "embedder": embedder,
-        "targetColumn": AIModel.targetColumnName,
-        "AIMODELTYPE": AIModel.modelType
-    }
-    classes_json = BytesIO(json.dumps(classes_data).encode('utf-8'))
-    await upload_blob(container, classes_json, os.path.join(head, "model_json.json"))
+        # Saving confusion matrix to CSV directly to Azure Blob Storage
+        confusionMatrixFile = pd.DataFrame(AIModel.cm)
+        csv_data = BytesIO()
+        confusionMatrixFile.to_csv(csv_data, index=False)
+        csv_data.seek(0)
+        await upload_blob(container, csv_data, os.path.join(head, "confusion_matrix.csv"))
 
-    await saveModelInformationInDB(label, head, id, email)
+        
+        # Saving classes name with encoding directly to Azure Blob Storage
+        classes_data = {
+            "encodedClasses": {int(key): colName for key, colName in AIModel.classesWithEncoding.items()},
+            "embedder": embedder,
+            "targetColumn": AIModel.targetColumnName,
+            "AIMODELTYPE": AIModel.modelType,
+            "fileColumns": headers
+        }
+        classes_json = BytesIO(json.dumps(classes_data).encode('utf-8'))
+        await upload_blob(container, classes_json, os.path.join(head, "model_json.json"))
+
+        await saveModelInformationInDB(label, head, id, email)
+    except Exception as e:
+        await publishMsgOnRabbitMQ({"error": str(e)}, email)
 
 
 
