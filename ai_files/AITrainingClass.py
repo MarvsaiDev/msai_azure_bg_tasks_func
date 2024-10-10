@@ -89,12 +89,12 @@ class TrainAIModel:
         self.true_labels = []
         self.pred_labels = []
 
-    async def train_model(self, email):
+    async def train_model(self, email, epochsNumbers):
         self.__encode_target__()
         self.__split_df__(self.df)
         self.__define_model__()
 
-        NO_EPOCHS=10
+        NO_EPOCHS= 10 if epochsNumbers is None or epochsNumbers < 1 else epochsNumbers
         # Training loop
         for epoch in range(NO_EPOCHS):  # number of epochs
             # this part is for training
@@ -109,7 +109,9 @@ class TrainAIModel:
                 loss.backward()
                 self.optimizer.step()
 
-            logging.info(f'Epoch {epoch+1}, Loss: {loss.item()}')
+            train_loss = loss.item()
+            logging.info(f'Epoch {epoch+1}, Loss: {train_loss}')
+
 
             # this part is for evaluation
             self.model.eval()
@@ -144,7 +146,15 @@ class TrainAIModel:
             accuracy = correct / total
             percentage = (epoch + 1) / NO_EPOCHS * 100
 
-            await publishMsgOnRabbitMQ({"task": "training", "condition": "continue", "percentage": str(percentage)}, email)
+            await publishMsgOnRabbitMQ({
+                "task": "training", 
+                "condition": "continue", 
+                "percentage": str(percentage), 
+                "epoch": str(epoch + 1),
+                "val_loss": str(loss.item()),
+                "val_accuracy": str(accuracy),
+                "train_loss": str(train_loss)
+            }, email)
 
             logging.info(f'Epoch {epoch + 1}, Loss: {loss.item()}, Validation Accuracy: {accuracy}')
 
