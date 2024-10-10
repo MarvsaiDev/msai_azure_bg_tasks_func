@@ -108,7 +108,7 @@ async def trainRouteFunc(res):
             # creating and merging data frame from list
             df = pd.concat([df, pd.DataFrame(blob_list)], ignore_index=True)
 
-        await trainingFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"])
+        await trainingFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"], res["epochsNumbers"])
 
         blob_client.delete_blob(delete_snapshots="include")
 

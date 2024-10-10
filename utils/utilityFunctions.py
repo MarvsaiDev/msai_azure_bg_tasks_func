@@ -89,7 +89,7 @@ async def EmbeddingFile(blob_service_client, containerName, container, head, res
 
     return pathsOfTrainingData
 
-async def trainingFunc(df, email, container, embeddingFilePath, embedder, label, id):
+async def trainingFunc(df, email, container, embeddingFilePath, embedder, label, id, epochsNumbers):
     try:
         # selectedColumnIndex = int(columnNum) - 1
         selectedColumnName = df.columns[0]
@@ -99,7 +99,7 @@ async def trainingFunc(df, email, container, embeddingFilePath, embedder, label,
        
         AIModel = TrainAIModel(selectedColumnName, df, encodedClasses=None, mode="train")
 
-        await AIModel.train_model(email)
+        await AIModel.train_model(email, epochsNumbers)
 
         await saving_model_data(AIModel, embedder, container, embeddingFilePath, email, label, id)
 
