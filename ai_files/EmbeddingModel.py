@@ -4,7 +4,6 @@ from transformers import AutoTokenizer, AutoModel
 import torch
 import openai
 from transformers import AutoTokenizer, AutoModel
-# from utils.AzureStorage import blob_service_client
 
 class AbstractEmbeddingModel(ABC):
     filename = "modelBGE.pth"
@@ -50,7 +49,7 @@ class BAIEmbeddingModel(AbstractEmbeddingModel):
         outputs = self.model(**inputs)
         embeddings = outputs.last_hidden_state
         embeddings = torch.mean(embeddings, dim=1)
-        return embeddings.detach().numpy()
+        return embeddings.detach().numpy().tolist()
 
     # def download_model_data(self):
     #     container_name = "transformermodeldata"
