@@ -7,6 +7,14 @@ from azure.storage.blob import BlobServiceClient
 from utils.RabbitMQ import publishMsgOnRabbitMQ
 from utils.utilityFunctions import EmbeddingFile, extract_lowercase_and_numbers, get_or_create_container, trainingFunc
 
+# Configure logging
+handler = log.StreamHandler()
+handler.setLevel(log.INFO)
+formatter = log.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+log.getLogger().addHandler(handler)
+log.getLogger().setLevel(log.INFO)
+
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 @app.route(route="hello")
