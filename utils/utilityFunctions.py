@@ -63,7 +63,7 @@ async def EmbeddingFile(blob_service_client, containerName, container, head, res
             await publishMsgOnRabbitMQ({"embedding done on": str(blob)}, res["email"])
 
             # the path for the training_data in which the embedding data is stored
-            newPath = os.path.join(h, f"training_data{count}.csv")
+            newPath = os.path.join(h, f"training_data{count}.json")
 
             # message for telling saving a specific blob
             await publishMsgOnRabbitMQ({"saving embedded blob: ": str(blob)}, res["email"])

@@ -59,7 +59,8 @@ def embdeddingFunc(df, h, embedder="OpenAI", columns = [], selectedColumnIndex =
             else:
                 selectedColumnName = col
 
-        fileText = targetColumnName + ": " + str(row.get(selectedColumnName)) + " |" + fileText
+        # this is bug
+        # fileText = targetColumnName + ": " + str(row.get(selectedColumnName)) + " |" + fileText
 
         if(idx == 1):
             log.info("file text value: ")
