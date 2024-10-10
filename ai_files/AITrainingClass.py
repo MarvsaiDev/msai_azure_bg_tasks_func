@@ -53,6 +53,7 @@ class TrainAIModel:
         self.output_classes = len(encodedClasses) if mode == "inference" else len(df[targetColumnName].unique())
         self.classesWithEncoding = {} if encodedClasses is None else encodedClasses
         self.modelType = modelType
+        self.cm = None
         
 
     def __encode_target__(self):
@@ -135,6 +136,8 @@ class TrainAIModel:
             true_labels_cpu = true_labelst.cpu().numpy()
             pred_labels_cpu = pred_labelst.cpu().numpy()
             cm = confusion_matrix(true_labels_cpu, pred_labels_cpu)
+
+            self.cm = cm
 
             # Convert the confusion matrix to a DataFrame for easier visualization
             cm_df = pd.DataFrame(cm)

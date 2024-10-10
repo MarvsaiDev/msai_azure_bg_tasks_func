@@ -28,7 +28,7 @@ def hello(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="train_AIModel")
 async def train(req: func.HttpRequest) -> func.HttpResponse:
-    log.info("Training function: 31")
+    log.info("Training function: 38")
     try:
         res = req.get_json()
 
@@ -81,7 +81,7 @@ async def trainRouteFunc(res):
         container = blob_service_client.get_container_client(containerName)
 
         # Embedding the file (which is saved in chunks) and saving file on path with training_data.csv file
-        pathsOfTrainingFiles = await EmbeddingFile(blob_service_client, containerName, container, head, res)
+        pathsOfTrainingFiles, headers = await EmbeddingFile(blob_service_client, containerName, container, head, res)
 
         await publishMsgOnRabbitMQ({"task": "training", "condition": "preparing"}, res["email"])
 
@@ -108,7 +108,7 @@ async def trainRouteFunc(res):
             # creating and merging data frame from list
             df = pd.concat([df, pd.DataFrame(blob_list)], ignore_index=True)
 
-        await trainingFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"], res["epochsNumbers"])
+        await trainingFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"], res["epochsNumbers"], headers)
 
         blob_client.delete_blob(delete_snapshots="include")
 
