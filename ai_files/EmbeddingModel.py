@@ -3,6 +3,8 @@ import os
 from transformers import AutoTokenizer, AutoModel
 import torch
 import openai
+from openai import RateLimitError
+import time
 from transformers import AutoTokenizer, AutoModel
 
 class AbstractEmbeddingModel(ABC):
@@ -88,14 +90,23 @@ class OpenAIEmbeddingModel(AbstractEmbeddingModel):
         # self.model = openai.Completion.create(engine=model_name)
         self.model = model_name
     
-    def get_embedding(self, text):
-        response = self.client.embeddings.create(
-            input=text, model=self.model
-        )
+    def get_embedding(self, text, retry = 1):
+        try:
+            response = self.client.embeddings.create(
+                input=text, model=self.model
+            )
 
-        embedding_vectors = []
+            embedding_vectors = []
 
-        for data in response.data:
-            embedding_vectors.append(data.embedding)
+            for data in response.data:
+                embedding_vectors.append(data.embedding)
 
-        return embedding_vectors
+            return embedding_vectors
+        except RateLimitError:
+            if (retry < 3):
+                time.sleep(5)
+                self.get_embedding(text, retry=retry + 1)
+            else:
+                raise RateLimitError
+        except Exception:
+            raise Exception
