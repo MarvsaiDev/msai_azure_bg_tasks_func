@@ -17,15 +17,19 @@ def check_All_Rows_Combined_Text_Length(rows, limit=7000):
     
     return False
 
-def embeddingTexts(arr, embedder="OpenAI"):
+def embeddingTexts(arr, embedder="openai"):
     data = []
 
     if (embedder == "transformer"):
         # This line is using Transformer embedding function to embedd the text
         embedding_Texts = embedding_model.get_embedding_torch(arr)
     else:
+        model = "text-embedding-3-small" if embedder.find("large") == -1 else "text-embedding-large"
+
+        log.info(f"the model used for embedding is {model}")
+
         # This line is using OPENAI embedding function to embedd the text
-        embedding_Texts = OPENAI_embedding_model.get_embedding(arr)
+        embedding_Texts = OPENAI_embedding_model.get_embedding(text=arr, retry=1, model=model)
 
     for idx, embedding_Text in enumerate(embedding_Texts):
         data.append({})
