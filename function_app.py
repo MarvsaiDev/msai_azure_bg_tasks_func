@@ -28,7 +28,7 @@ def hello(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="train_AIModel")
 async def train(req: func.HttpRequest) -> func.HttpResponse:
-    log.info("Training function: 38")
+    log.info("Training function: 40")
     try:
         res = req.get_json()
 
@@ -108,11 +108,13 @@ async def trainRouteFunc(res):
             # creating and merging data frame from list
             df = pd.concat([df, pd.DataFrame(blob_list)], ignore_index=True)
 
+            # deleting embedding file blob after getting data
+            blob_client.delete_blob(delete_snapshots="include")
+
         await trainingFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"], res["epochsNumbers"], headers)
 
-        blob_client.delete_blob(delete_snapshots="include")
-
     except Exception as e:
-        log.error("json error: " + e)
+        log.error("json error: ")
+        log.error(e)
         await publishMsgOnRabbitMQ({"error": str(e)}, res["email"])
         raise e
