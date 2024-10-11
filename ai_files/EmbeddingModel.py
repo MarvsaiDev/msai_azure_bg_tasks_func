@@ -74,27 +74,33 @@ class OpenAIEmbeddingModel(AbstractEmbeddingModel):
     input_multiple = 2
 
     API_KEY = os.getenv("AZURE_HEALTHSCANNER_UK_EMBEDDING_API_KEY")
+    SMALL_API_KEY = os.getenv("AZURE_HEALTHSCANNER_UK_SMALL_EMBEDDING_API_KEY")
 
 
     client = openai.AzureOpenAI(
         azure_endpoint="https://healthscanneruk.openai.azure.com",
         api_version="2023-05-15",
         api_key=API_KEY,
-
     )
 
-    def __init__(self, model_name='text-embedding-large',classifier_module='custom_ai.ai', classifier_class='CustomClassifier'):
+    client2 = openai.AzureOpenAI(
+        azure_endpoint="https://rashi-m24ednq1-japaneast.cognitiveservices.azure.com",
+        api_version="2023-05-15",
+        api_key=SMALL_API_KEY,
+    )
+
+    # def __init__(self, classifier_module='custom_ai.ai', classifier_class='CustomClassifier'):
         # module = importlib.import_module(classifier_module)
         # self.classifier = getattr(module, classifier_class)
         # openai.api_key = os.getenv("AZURE_HEALTHSCANNER_UK_API_KEY")
         # self.model = openai.Completion.create(engine=model_name)
-        self.model = model_name
     
-    def get_embedding(self, text, retry = 1):
+    def get_embedding(self, text, retry = 1, model='text-embedding-large'):
         try:
-            response = self.client.embeddings.create(
-                input=text, model=self.model
-            )
+            if (model == 'text-embedding-large'):
+                response = self.client.embeddings.create(input=text, model=model)
+            else:
+                response = self.client2.embeddings.create(input=text, model=model)
 
             embedding_vectors = []
 
@@ -105,7 +111,7 @@ class OpenAIEmbeddingModel(AbstractEmbeddingModel):
         except RateLimitError:
             if (retry < 3):
                 time.sleep(5)
-                self.get_embedding(text, retry=retry + 1)
+                self.get_embedding(text, retry=retry + 1, model=model)
             else:
                 raise RateLimitError
         except Exception:
