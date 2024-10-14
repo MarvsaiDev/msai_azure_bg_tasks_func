@@ -8,11 +8,14 @@ from sqlalchemy import String
 from db.base_class import Base
 
 
-class AIModelsData(Base):
-    __tablename__ = "AIModelsData"
+class AIModels(Base):
+    __tablename__ = "aimodels"
 
     id = Column(Integer, primary_key=True, index=True)
-    path = Column(String(200), nullable=False)
+    label = Column(String(200), nullable=False)
+    path = Column(String, nullable=False)
+    accuracy = Column(String, nullable=False)
+    loss = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime)
     deleted_at = Column(DateTime)
@@ -20,17 +23,15 @@ class AIModelsData(Base):
     updated_by = Column(String(200))
     deleted_by = Column(String(200))
 
-class AIModelsData_labels(Base):
-    __tablename__ = "AIModelsData_labels"
+class UsersAIModels(Base):
+    __tablename__ = "users_aimodels"
 
     id = Column(Integer, primary_key=True, index=True)
-    AIModel_label_id = Column(Integer, nullable=False)
-    AIModelsData_id = Column(Integer, nullable=False)
+    user_id = Column(Integer, nullable=False)
+    aimodel_id = Column(Integer, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime)
     deleted_at = Column(DateTime)
     created_by = Column(String(200), nullable=False)
     updated_by = Column(String(200))
     deleted_by = Column(String(200))
-    status = Column(String(200), default="active")
-

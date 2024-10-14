@@ -28,7 +28,7 @@ def hello(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="train_AIModel")
 async def train(req: func.HttpRequest) -> func.HttpResponse:
-    log.info("Training function: 40")
+    log.info("Training function: 41")
     try:
         res = req.get_json()
 

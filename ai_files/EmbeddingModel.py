@@ -111,8 +111,4 @@ class OpenAIEmbeddingModel(AbstractEmbeddingModel):
         except RateLimitError:
             if (retry < 3):
                 time.sleep(5)
-                self.get_embedding(text, retry=retry + 1, model=model)
-            else:
-                raise RateLimitError
-        except Exception:
-            raise Exception
+                return self.get_embedding(text, retry=retry + 1, model=model)
