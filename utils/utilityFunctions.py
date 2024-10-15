@@ -159,6 +159,7 @@ async def saving_model_data(AIModel: TrainAIModel, embedder:str, container, embe
         await saveModelInformationInDB(label, head, id, email, AIModel.accuray, AIModel.loss)
     except Exception as e:
         await publishMsgOnRabbitMQ({"error": str(e)}, email)
+        raise e
 
 
 
@@ -178,5 +179,6 @@ async def saveModelInformationInDB(label, filePath, id, email, acc, loss):
         log.info("new data in db added")
     except Exception as e:
         await publishMsgOnRabbitMQ({"error db": str(e)}, email)
+        raise e
     finally:
         db.close()
