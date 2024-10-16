@@ -1,19 +1,24 @@
 from io import BytesIO
-from sqlalchemy import text
 import torch, os, json
 import pandas as pd
 from ai_files.AITrainingClass import TrainAIModel
 import logging as log
 
-from db.repository.aimodels import addAIModel
+from db.repository.aimodels import addAIModel, updateAIModel
 from db.connection import SessionLocal
 from utils.AzureStorage import SaveExcelDataToAzure
 from utils.RabbitMQ import publishMsgOnRabbitMQ
 from utils.embeddingFunctions import embdeddingFunc
 
-async def EmbeddingFile(blob_service_client, containerName, container, head, res):
+async def EmbeddingFile(blob_service_client, containerName, container, head, res, resume = False):
     # getting all blobs paths in user's container
     blobs = container.list_blob_names()
+
+    if resume:
+        embedder = await getEmbedderFromModelFile(blobs=blobs, container=container)
+    else:
+        embedder = res["embedder"]
+
     # variable to track is embedding is started or not
     isEmbeddingNotStarted = True
     # path for embedding file
@@ -26,6 +31,9 @@ async def EmbeddingFile(blob_service_client, containerName, container, head, res
         # splitting the blob path
         h, t = os.path.split(os.path.normpath(blob))
 
+        if resume and (t.find("resumeFile_") == -1):
+            continue
+        
         # checking if blob is same as the current blob
         if (h == head):
             # getting the blob
@@ -56,7 +64,7 @@ async def EmbeddingFile(blob_service_client, containerName, container, head, res
             await publishMsgOnRabbitMQ({"embedding on blob": str(blob)}, res["email"])
 
             # embedding the blob data and get list of embedded data
-            encoded_df, headers = embdeddingFunc(df, headers, embedder=res["embedder"], columns=columns, selectedColumnIndex=selectedColumnIndex)
+            encoded_df, headers = embdeddingFunc(df, headers, embedder=embedder, columns=columns, selectedColumnIndex=selectedColumnIndex)
 
             # message for telling the embedding is done on a specific blob
             await publishMsgOnRabbitMQ({"embedding done on": str(blob)}, res["email"])
@@ -95,12 +103,38 @@ async def trainingFunc(df, email, container, embeddingFilePath, embedder, label,
 
         log.info(df.columns)
         log.info(df.columns[0])
+
+        path, tail = os.path.split(embeddingFilePath)
        
         AIModel = TrainAIModel(selectedColumnName, df, encodedClasses=None, mode="train")
 
         await AIModel.train_model(email, epochsNumbers)
 
-        await saving_model_data(AIModel, embedder, container, embeddingFilePath, email, label, id, headers)
+        await saving_model_data(AIModel, embedder, container, path, email, label, id, headers)
+
+        await publishMsgOnRabbitMQ({"task": "complete"}, email)
+
+    except Exception as e:
+        log.info(e)
+        await publishMsgOnRabbitMQ({"task": "training", "condition": "failed"}, email)
+
+async def trainingResumeFunc(df, email, container, embeddingFilePath, embedder, label, id, epochsNumbers, headers):
+    try:
+        # selectedColumnIndex = int(columnNum) - 1
+        selectedColumnName = df.columns[0]
+
+        log.info(df.columns)
+        log.info(df.columns[0])
+
+        log.error(embeddingFilePath)
+
+        path, tail = os.path.split(embeddingFilePath)
+
+        AIModel = TrainAIModel(selectedColumnName, df, encodedClasses=None, mode="train")
+
+        await AIModel.resume_train_model(email, epochsNumbers, path, container)
+
+        await saving_model_data(AIModel, embedder, container, path, email, label, id, headers, resume=True)
 
         await publishMsgOnRabbitMQ({"task": "complete"}, email)
 
@@ -119,30 +153,28 @@ def get_or_create_container(blob_service_client, container_name):
         print(f"the exception for creating container {e}")
 
 
-async def saving_model_data(AIModel: TrainAIModel, embedder:str, container, embeddingFilePath, email, label, id, headers = []):
+async def saving_model_data(AIModel: TrainAIModel, embedder:str, container, path, email, label, id, headers = [], resume = False):
     try:
         await publishMsgOnRabbitMQ({"task": "saving", "condition": "continue"}, email)
-
-        head, tail = os.path.split(embeddingFilePath)
         
         # Saving model data directly to Azure Blob Storage
         model_data = BytesIO()
         torch.save(AIModel.model.state_dict(), model_data)
         model_data.seek(0)
-        await upload_blob(container, model_data, os.path.join(head, "model_data.pt"))
+        await upload_blob(container, model_data, os.path.join(path, "model_data.pt"))
 
         # Saving model optimizer data directly to Azure Blob Storage
         optimizer_data = BytesIO()
         torch.save(AIModel.optimizer.state_dict(), optimizer_data)
         optimizer_data.seek(0)
-        await upload_blob(container, optimizer_data, os.path.join(head, "model_opti_data.pt"))
+        await upload_blob(container, optimizer_data, os.path.join(path, "model_opti_data.pt"))
 
         # Saving confusion matrix to CSV directly to Azure Blob Storage
         confusionMatrixFile = pd.DataFrame(AIModel.cm)
         csv_data = BytesIO()
         confusionMatrixFile.to_csv(csv_data, index=False)
         csv_data.seek(0)
-        await upload_blob(container, csv_data, os.path.join(head, "confusion_matrix.csv"))
+        await upload_blob(container, csv_data, os.path.join(path, "confusion_matrix.csv"))
 
         
         # Saving classes name with encoding directly to Azure Blob Storage
@@ -154,28 +186,47 @@ async def saving_model_data(AIModel: TrainAIModel, embedder:str, container, embe
             "fileColumns": headers
         }
         classes_json = BytesIO(json.dumps(classes_data).encode('utf-8'))
-        await upload_blob(container, classes_json, os.path.join(head, "model_json.json"))
+        await upload_blob(container, classes_json, os.path.join(path, "model_json.json"))
 
-        await saveModelInformationInDB(label, head, id, email, AIModel.accuray, AIModel.loss)
+        await saveModelInformationInDB(label, path, id, email, AIModel.accuray, AIModel.loss, resume=resume)
     except Exception as e:
         await publishMsgOnRabbitMQ({"error": str(e)}, email)
         raise e
 
+async def getEmbedderFromModelFile(blobs, container):
+    for blob in blobs:
+        if blob.find("/model_json.json") != -1:
+            # getting the blob
+            blob_client = container.get_blob_client(blob)
+            # get the blob data
+            blob_data = blob_client.download_blob().readall()
+
+            # Decode binary data to string from blob
+            blob_str = blob_data.decode('utf-8')
+            
+            # Convert string to Python list
+            blob_list = json.loads(blob_str)
+
+            return blob_list["embedder"]
+    return ""
 
 
 async def upload_blob(container, data, path):
     log.info(path)
     blob = container.get_blob_client(path)
-    blob.upload_blob(data)
+    blob.upload_blob(data, overwrite=True)
 
 
-async def saveModelInformationInDB(label, filePath, id, email, acc, loss):
+async def saveModelInformationInDB(label, filePath, id, email, acc, loss, resume = False):
     try:
         log.info("database: ")
         db = SessionLocal()
 
-        log.info(db)
-        addAIModel(path = filePath, email = email, label = label, user_id = id, db = db, acc = acc, loss = loss)
+        if resume:
+            updateAIModel(label, db, acc, loss)
+        else:     
+            addAIModel(path = filePath, email = email, label = label, user_id = id, db = db, acc = acc, loss = loss)
+
         log.info("new data in db added")
     except Exception as e:
         await publishMsgOnRabbitMQ({"error db": str(e)}, email)

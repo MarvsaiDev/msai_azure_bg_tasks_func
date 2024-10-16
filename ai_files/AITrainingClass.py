@@ -1,3 +1,4 @@
+from io import BytesIO
 import logging
 import pandas as pd
 import torch, os
@@ -56,6 +57,8 @@ class TrainAIModel:
         self.cm = None
         self.accuray = 0
         self.loss = 0
+        self.model = None
+        self.optimizer = None
         
 
     def __encode_target__(self):
@@ -96,6 +99,101 @@ class TrainAIModel:
         self.__encode_target__()
         self.__split_df__(self.df)
         self.__define_model__()
+
+        NO_EPOCHS= 10 if epochsNumbers is None or epochsNumbers < 1 else epochsNumbers
+        # Training loop
+        for epoch in range(NO_EPOCHS):  # number of epochs
+            # this part is for training
+            self.model.train()
+            for features, targets in self.train_dataset:
+                # Forward pass
+                outputs = self.model(features.float())
+                loss = self.criterion(outputs, targets.long())
+
+                # Backward pass and optimization
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+
+            train_loss = loss.item()
+            logging.info(f'Epoch {epoch+1}, Loss: {train_loss}')
+
+
+            # this part is for evaluation
+            self.model.eval()
+            correct = 0
+            total = 0
+            with torch.no_grad():
+                for features, targets in self.val_dataloader:
+                    outputs = self.model(features.float())
+                    loss = self.criterion(outputs, targets.long())
+                    _, predicted = torch.max(outputs.data, 1)
+                    total += targets.size(0)
+                    correct += (predicted == targets).sum().item()
+                    self.true_labels.append(targets)
+                    self.pred_labels.append(predicted)
+
+            # Compute the confusion matrix
+            true_labelst = torch.cat(self.true_labels)
+            pred_labelst = torch.cat(self.pred_labels)
+
+            # When you need to use them as numpy arrays, you can move them to CPU
+            true_labels_cpu = true_labelst.cpu().numpy()
+            pred_labels_cpu = pred_labelst.cpu().numpy()
+            cm = confusion_matrix(true_labels_cpu, pred_labels_cpu)
+
+            self.cm = cm
+
+            # Convert the confusion matrix to a DataFrame for easier visualization
+            cm_df = pd.DataFrame(cm)
+            # Compute the percentage confusion matrix
+            cm_percentage = cm_df.div(cm_df.sum(axis=1), axis=0)
+            # print(cm_percentage)
+            print(cm_percentage.values.diagonal())
+
+            accuracy = correct / total
+            percentage = (epoch + 1) / NO_EPOCHS * 100
+
+            await publishMsgOnRabbitMQ({
+                "task": "training", 
+                "condition": "continue", 
+                "percentage": str(percentage), 
+                "epoch": str(epoch + 1),
+                "val_loss": str(loss.item()),
+                "val_accuracy": str(accuracy),
+                "train_loss": str(train_loss)
+            }, email)
+
+            self.accuray = accuracy
+            self.loss = loss.item()
+
+            logging.info(f'Epoch {epoch + 1}, Loss: {loss.item()}, Validation Accuracy: {accuracy}')
+
+    async def __define_resume_model__(self, modelPath, container):
+        self.model = AIMODELS[self.modelType](self.input_size, self.input_size*4, self.output_classes)
+        self.model.apply(weights_init)
+        # Define a loss function and optimizer
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = optim.Adam(self.model.parameters(), lr=0.0001)
+        self.true_labels = []
+        self.pred_labels = []
+
+        model_data = await self.download_blob_func(container, os.path.join(modelPath, "model_data.pt"))
+        optimizer_data = await self.download_blob_func(container, os.path.join(modelPath, "model_opti_data.pt"))
+
+        self.model.load_state_dict(torch.load(model_data))
+        self.optimizer.load_state_dict(torch.load(optimizer_data))
+
+    async def download_blob_func(self, container, blob):
+        stream = BytesIO()
+        container.download_blob(blob).readinto(stream)
+        stream.seek(0)
+        return stream
+
+    async def resume_train_model(self, email, epochsNumbers, modelPath, container):
+        self.__encode_target__()
+        self.__split_df__(self.df)
+        await self.__define_resume_model__(modelPath, container)
 
         NO_EPOCHS= 10 if epochsNumbers is None or epochsNumbers < 1 else epochsNumbers
         # Training loop
