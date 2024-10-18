@@ -54,6 +54,8 @@ class TrainAIModel:
         self.classesWithEncoding = {} if encodedClasses is None else encodedClasses
         self.modelType = modelType
         self.cm = None
+        self.accuray = 0
+        self.loss = 0
         
 
     def __encode_target__(self):
@@ -158,6 +160,9 @@ class TrainAIModel:
                 "val_accuracy": str(accuracy),
                 "train_loss": str(train_loss)
             }, email)
+
+            self.accuray = accuracy
+            self.loss = loss.item()
 
             logging.info(f'Epoch {epoch + 1}, Loss: {loss.item()}, Validation Accuracy: {accuracy}')
 

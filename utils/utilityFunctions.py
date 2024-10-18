@@ -5,8 +5,7 @@ import pandas as pd
 from ai_files.AITrainingClass import TrainAIModel
 import logging as log
 
-from db.repository.AIModels import add_AIModelData_and_label, add_new_AIModelData
-from db.repository.labels_users import add_new_AIModel_label
+from db.repository.aimodels import addAIModel
 from db.connection import SessionLocal
 from utils.AzureStorage import SaveExcelDataToAzure
 from utils.RabbitMQ import publishMsgOnRabbitMQ
@@ -157,9 +156,10 @@ async def saving_model_data(AIModel: TrainAIModel, embedder:str, container, embe
         classes_json = BytesIO(json.dumps(classes_data).encode('utf-8'))
         await upload_blob(container, classes_json, os.path.join(head, "model_json.json"))
 
-        await saveModelInformationInDB(label, head, id, email)
+        await saveModelInformationInDB(label, head, id, email, AIModel.accuray, AIModel.loss)
     except Exception as e:
         await publishMsgOnRabbitMQ({"error": str(e)}, email)
+        raise e
 
 
 
@@ -169,28 +169,16 @@ async def upload_blob(container, data, path):
     blob.upload_blob(data)
 
 
-async def saveModelInformationInDB(label, filePath, id, email):
+async def saveModelInformationInDB(label, filePath, id, email, acc, loss):
     try:
         log.info("database: ")
         db = SessionLocal()
 
-        result = db.execute(text("SELECT table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema = 'marvsaiHS_Staging';"))
-
-        log.info(result)
-        log.info(result.all())
-
-        for row in result:
-            log.info(row)
-            log.info(row['table_name'])
-    
         log.info(db)
-        newLabel = add_new_AIModel_label(label, id, email, db)
-        log.info(newLabel)
-        newAIModelData  = add_new_AIModelData(filePath, email, db)
-        log.info(newAIModelData)
-        add_AIModelData_and_label(newLabel.id, newAIModelData.id, email, db)
+        addAIModel(path = filePath, email = email, label = label, user_id = id, db = db, acc = acc, loss = loss)
         log.info("new data in db added")
     except Exception as e:
         await publishMsgOnRabbitMQ({"error db": str(e)}, email)
+        raise e
     finally:
         db.close()

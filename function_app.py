@@ -18,8 +18,9 @@ log.getLogger().setLevel(log.INFO)
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 @app.route(route="hello")
-def hello(req: func.HttpRequest) -> func.HttpResponse:
+async def hello(req: func.HttpRequest) -> func.HttpResponse:
     log.info('Python HTTP trigger function processed a request.')
+    await publishMsgOnRabbitMQ({"value": "asdasd"}, "rehan.shah@talkontext.com")
 
     return func.HttpResponse(
         "Http azure function is working",
@@ -28,7 +29,7 @@ def hello(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="train_AIModel")
 async def train(req: func.HttpRequest) -> func.HttpResponse:
-    log.info("Training function: 40")
+    log.info("Training function: 41")
     try:
         res = req.get_json()
 
