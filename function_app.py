@@ -27,6 +27,18 @@ async def hello(req: func.HttpRequest) -> func.HttpResponse:
         status_code=200
     )
 
+
+@app.queue_trigger(arg_name="value", queue_name="trainingqueue", connection="AZURE_STORAGE_CONNECTION_STRING")
+async def queue_func(value: func.QueueMessage) -> None:
+    try:
+        res = value.get_json()
+
+        await trainRouteFunc(res)
+    except Exception as e:
+        log.error("err")
+        log.error(e)
+
+
 @app.route(route="train_AIModel")
 async def train(req: func.HttpRequest) -> func.HttpResponse:
     log.info("Training function: 41")
@@ -35,7 +47,7 @@ async def train(req: func.HttpRequest) -> func.HttpResponse:
 
         response = func.HttpResponse("Tasks started", status_code=200)
 
-        asyncio.create_task(trainRouteFunc(res))
+        await trainRouteFunc(res)
 
         return response
         
@@ -113,7 +125,9 @@ async def trainRouteFunc(res):
             blob_client.delete_blob(delete_snapshots="include")
 
         await trainingFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"], res["epochsNumbers"], headers)
-
+    except asyncio.CancelledError:
+        log.error("Task was cancelled")
+        await publishMsgOnRabbitMQ({"status": "cancelled"}, res["email"])
     except Exception as e:
         log.error("json error: ")
         log.error(e)

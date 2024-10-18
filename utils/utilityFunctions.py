@@ -5,7 +5,7 @@ import pandas as pd
 from ai_files.AITrainingClass import TrainAIModel
 import logging as log
 
-from db.repository.aimodels import addAIModel
+from db.repository.AIModels import addAIModel
 from db.connection import SessionLocal
 from utils.AzureStorage import SaveExcelDataToAzure
 from utils.RabbitMQ import publishMsgOnRabbitMQ
