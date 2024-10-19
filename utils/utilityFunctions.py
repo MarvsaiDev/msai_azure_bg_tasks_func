@@ -4,7 +4,7 @@ import pandas as pd
 from ai_files.AITrainingClass import TrainAIModel
 import logging as log
 
-from db.repository.aimodels import addAIModel, updateAIModel
+from db.repository.AIModels import addAIModel, updateAIModel
 from db.connection import SessionLocal
 from utils.AzureStorage import SaveExcelDataToAzure
 from utils.RabbitMQ import publishMsgOnRabbitMQ
@@ -96,17 +96,16 @@ async def EmbeddingFile(blob_service_client, containerName, container, head, res
 
     return pathsOfTrainingData, headers.tolist()
 
-async def trainingFunc(df, email, container, embeddingFilePath, embedder, label, id, epochsNumbers, headers):
+async def trainingFunc(df, email, container, embeddingFilePath, embedder, label, id, epochsNumbers, headers, targetColumnName):
     try:
-        # selectedColumnIndex = int(columnNum) - 1
-        selectedColumnName = df.columns[0]
-
         log.info(df.columns)
         log.info(df.columns[0])
 
         path, tail = os.path.split(embeddingFilePath)
        
-        AIModel = TrainAIModel(selectedColumnName, df, encodedClasses=None, mode="train")
+        AIModel = TrainAIModel(targetColumnName, df, encodedClasses=None, mode="train")
+
+        log.info("model initialized")
 
         await AIModel.train_model(email, epochsNumbers)
 
@@ -116,13 +115,11 @@ async def trainingFunc(df, email, container, embeddingFilePath, embedder, label,
 
     except Exception as e:
         log.info(e)
+        log.error(e)
         await publishMsgOnRabbitMQ({"task": "training", "condition": "failed"}, email)
 
-async def trainingResumeFunc(df, email, container, embeddingFilePath, embedder, label, id, epochsNumbers, headers):
+async def trainingResumeFunc(df, email, container, embeddingFilePath, embedder, label, id, epochsNumbers, headers, targetColumnName):
     try:
-        # selectedColumnIndex = int(columnNum) - 1
-        selectedColumnName = df.columns[0]
-
         log.info(df.columns)
         log.info(df.columns[0])
 
@@ -130,7 +127,7 @@ async def trainingResumeFunc(df, email, container, embeddingFilePath, embedder, 
 
         path, tail = os.path.split(embeddingFilePath)
 
-        AIModel = TrainAIModel(selectedColumnName, df, encodedClasses=None, mode="train")
+        AIModel = TrainAIModel(targetColumnName, df, encodedClasses=None, mode="train")
 
         await AIModel.resume_train_model(email, epochsNumbers, path, container)
 
@@ -140,6 +137,7 @@ async def trainingResumeFunc(df, email, container, embeddingFilePath, embedder, 
 
     except Exception as e:
         log.info(e)
+        log.error(e)
         await publishMsgOnRabbitMQ({"task": "training", "condition": "failed"}, email)
 
 def extract_lowercase_and_numbers(input_string):
@@ -215,6 +213,24 @@ async def upload_blob(container, data, path):
     log.info(path)
     blob = container.get_blob_client(path)
     blob.upload_blob(data, overwrite=True)
+
+
+async def get_target_column_encodede_classes_from_model_file(blobs, container):
+    for blob in blobs:
+        if blob.find("/model_json.json") != -1:
+            # getting the blob
+            blob_client = container.get_blob_client(blob)
+            # get the blob data
+            blob_data = blob_client.download_blob().readall()
+
+            # Decode binary data to string from blob
+            blob_str = blob_data.decode('utf-8')
+            
+            # Convert string to Python list
+            blob_list = json.loads(blob_str)
+
+            return blob_list["encodedClasses"]
+    return ""
 
 
 async def saveModelInformationInDB(label, filePath, id, email, acc, loss, resume = False):

@@ -128,7 +128,11 @@ async def trainRouteFunc(res):
             # deleting embedding file blob after getting data
             blob_client.delete_blob(delete_snapshots="include")
 
-        await trainingFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"], res["epochsNumbers"], headers)
+        # Delete the first row
+        targetColumnName = df.iloc[0, 0]
+        df.drop([0], inplace=True)
+
+        await trainingFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"], res["epochsNumbers"], headers, targetColumnName)
 
     except Exception as e:
         log.error("json error: ")
@@ -203,8 +207,12 @@ async def resumeTrainRouteFunc(res):
 
             # deleting embedding file blob after getting data
             blob_client.delete_blob(delete_snapshots="include")
+        
+        # Delete the first row
+        targetColumnName = df.iloc[0, 0]
+        df.drop([0], inplace=True)
 
-        await trainingResumeFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"], res["epochsNumbers"], headers)
+        await trainingResumeFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"], res["epochsNumbers"], headers, targetColumnName)
 
     except Exception as e:
         log.error("json error: ")

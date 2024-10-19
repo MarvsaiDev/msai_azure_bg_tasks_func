@@ -2,7 +2,7 @@ import logging as log
 
 from sqlalchemy.orm import Session
 
-from db.models.aimodels import AIModels, UsersAIModels
+from db.models.AIModels import AIModels, UsersAIModels
 
 
 def addAIModel(path: str, email: str, label: str, user_id: int, db: Session, acc: any, loss: any):

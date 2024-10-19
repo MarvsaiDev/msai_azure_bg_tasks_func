@@ -13,9 +13,9 @@ from sklearn.preprocessing import LabelEncoder
 
 
 class MyDataset(Dataset):
-    def __init__(self, dataframe, targetColumnName=''):
-        self.features = dataframe.drop(targetColumnName, axis=1).values
-        self.targets = dataframe[targetColumnName].values
+    def __init__(self, dataframe):
+        self.features = dataframe.drop(dataframe.columns[0], axis=1).values
+        self.targets = dataframe.iloc[:, 0].values
 
     def __len__(self):
         return len(self.targets)
@@ -51,7 +51,7 @@ class TrainAIModel:
         self.targetColumnName = targetColumnName
         self.cols = df.shape[1]
         self.input_size = self.cols if mode == "inference" else self.cols-1
-        self.output_classes = len(encodedClasses) if mode == "inference" else len(df[targetColumnName].unique())
+        self.output_classes = len(encodedClasses) if mode == "inference" else len(df.iloc[:, 0].unique())
         self.classesWithEncoding = {} if encodedClasses is None else encodedClasses
         self.modelType = modelType
         self.cm = None
@@ -59,19 +59,19 @@ class TrainAIModel:
         self.loss = 0
         self.model = None
         self.optimizer = None
-        
+
 
     def __encode_target__(self):
         # Assuming 'targets' is your numpy array of targets
         encoder = LabelEncoder()
 
-        originalColumn = self.df[self.targetColumnName]
-        encodedColumn = encoder.fit_transform(self.df[self.targetColumnName])
+        originalColumn = self.df.iloc[:, 0].to_numpy()
+        encodedColumn = encoder.fit_transform(self.df.iloc[:, 0])
 
         for i in range(len(originalColumn)):
             self.classesWithEncoding[encodedColumn[i]] = originalColumn[i]
 
-        self.df[self.targetColumnName] = encodedColumn
+        self.df.iloc[:, 0] = encodedColumn
 
 
     def __split_df__(self, df):
@@ -79,14 +79,18 @@ class TrainAIModel:
         self.train_df, self.val_df = train_test_split(df, test_size=0.1, random_state=42)
 
         # Create data loaders for training and validation sets
-        self.train_dataset = MyDataset(self.train_df, self.targetColumnName)
-        self.val_dataset = MyDataset(self.val_df, self.targetColumnName)
+        self.train_dataset = MyDataset(self.train_df)
+        self.val_dataset = MyDataset(self.val_df)
 
         self.train_dataloader = DataLoader(self.train_dataset, batch_size=64, shuffle=True)
         self.val_dataloader = DataLoader(self.val_dataset, batch_size=64, shuffle=False)
 
 
     def __define_model__(self):
+        logging.info("sizes")
+        logging.info(self.input_size)
+        logging.info(self.input_size*4)
+        logging.info(self.output_classes)
         self.model = AIMODELS[self.modelType](self.input_size, self.input_size*4, self.output_classes)
         self.model.apply(weights_init)
         # Define a loss function and optimizer
@@ -170,6 +174,10 @@ class TrainAIModel:
             logging.info(f'Epoch {epoch + 1}, Loss: {loss.item()}, Validation Accuracy: {accuracy}')
 
     async def __define_resume_model__(self, modelPath, container):
+        logging.info("sizes")
+        logging.info(self.input_size)
+        logging.info(self.input_size*4)
+        logging.info(self.output_classes)
         self.model = AIMODELS[self.modelType](self.input_size, self.input_size*4, self.output_classes)
         self.model.apply(weights_init)
         # Define a loss function and optimizer
