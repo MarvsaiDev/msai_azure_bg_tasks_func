@@ -20,7 +20,6 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 @app.route(route="hello")
 async def hello(req: func.HttpRequest) -> func.HttpResponse:
     log.info('Python HTTP trigger function processed a request.')
-    await publishMsgOnRabbitMQ({"value": "asdasd"}, "rehan.shah@talkontext.com")
 
     return func.HttpResponse(
         "Http azure function is working",
