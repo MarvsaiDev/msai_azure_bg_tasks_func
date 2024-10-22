@@ -59,19 +59,51 @@ class TrainAIModel:
         self.loss = 0
         self.model = None
         self.optimizer = None
+        self.isSameEncodedClasses = True
 
 
-    def __encode_target__(self):
-        # Assuming 'targets' is your numpy array of targets
-        encoder = LabelEncoder()
+    def __encode_target__(self, encodedClasses, resume = False):
+        if (resume):
+            # Assuming 'targets' is your numpy array of targets
+            encoder = LabelEncoder()
 
-        originalColumn = self.df.iloc[:, 0].to_numpy()
-        encodedColumn = encoder.fit_transform(self.df.iloc[:, 0])
+            originalColumn = self.df.iloc[:, 0].to_numpy()
+            encodedColumn = encoder.fit_transform(self.df.iloc[:, 0])
 
-        for i in range(len(originalColumn)):
-            self.classesWithEncoding[encodedColumn[i]] = originalColumn[i]
+            for i in range(len(originalColumn)):
+                self.classesWithEncoding[encodedColumn[i]] = originalColumn[i]
 
-        self.df.iloc[:, 0] = encodedColumn
+            isSameEncodedClasses = True
+
+            for k1, v1 in encodedClasses.items():
+                foundClass = False
+                for k2, v2 in self.classesWithEncoding.items():
+                    if (v1 == v2):
+                        foundClass = True
+                        break
+                
+                if (foundClass == False):
+                    isSameEncodedClasses = False
+                    break
+            
+            if (len(encodedClasses.values()) == len(self.classesWithEncoding.values()) and isSameEncodedClasses):
+                self.isSameEncodedClasses = True
+            else:
+                self.isSameEncodedClasses = False
+
+
+            self.df.iloc[:, 0] = encodedColumn
+        else:
+            # Assuming 'targets' is your numpy array of targets
+            encoder = LabelEncoder()
+
+            originalColumn = self.df.iloc[:, 0].to_numpy()
+            encodedColumn = encoder.fit_transform(self.df.iloc[:, 0])
+
+            for i in range(len(originalColumn)):
+                self.classesWithEncoding[encodedColumn[i]] = originalColumn[i]
+
+            self.df.iloc[:, 0] = encodedColumn
 
 
     def __split_df__(self, df):
@@ -87,11 +119,7 @@ class TrainAIModel:
 
 
     def __define_model__(self):
-        logging.info("sizes")
-        logging.info(self.input_size)
-        logging.info(self.input_size*4)
-        logging.info(self.output_classes)
-        self.model = AIMODELS[self.modelType](self.input_size, self.input_size*4, self.output_classes)
+        self.model = AIMODELS[self.modelType](input_size = self.input_size, output_size = self.output_classes)
         self.model.apply(weights_init)
         # Define a loss function and optimizer
         self.criterion = nn.CrossEntropyLoss()
@@ -100,7 +128,7 @@ class TrainAIModel:
         self.pred_labels = []
 
     async def train_model(self, email, epochsNumbers):
-        self.__encode_target__()
+        self.__encode_target__([], False)
         self.__split_df__(self.df)
         self.__define_model__()
 
@@ -174,23 +202,36 @@ class TrainAIModel:
             logging.info(f'Epoch {epoch + 1}, Loss: {loss.item()}, Validation Accuracy: {accuracy}')
 
     async def __define_resume_model__(self, modelPath, container):
-        logging.info("sizes")
-        logging.info(self.input_size)
-        logging.info(self.input_size*4)
-        logging.info(self.output_classes)
-        self.model = AIMODELS[self.modelType](self.input_size, self.input_size*4, self.output_classes)
+        # Initialize the model
+        self.model = AIMODELS[self.modelType](input_size = self.input_size, output_size = self.output_classes)
         self.model.apply(weights_init)
-        # Define a loss function and optimizer
+
+        # Define loss function and optimizer
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.0001)
         self.true_labels = []
         self.pred_labels = []
 
+        # Load model and optimizer state
         model_data = await self.download_blob_func(container, os.path.join(modelPath, "model_data.pt"))
         optimizer_data = await self.download_blob_func(container, os.path.join(modelPath, "model_opti_data.pt"))
+        state_dict = torch.load(model_data)
 
-        self.model.load_state_dict(torch.load(model_data))
+        if self.isSameEncodedClasses == False:
+            logging.info("update only last layer.")
+            num_features = self.model.fc.in_features
+
+            # Create a new final layer and initialize
+            self.model.fc = nn.Linear(num_features, len(self.df.iloc[:, 0].unique()))
+            self.model.fc.apply(weights_init)
+
+        else:
+            self.model.load_state_dict(state_dict)
+
+        
         self.optimizer.load_state_dict(torch.load(optimizer_data))
+
+        logging.info("Model loaded and updated successfully!")
 
     async def download_blob_func(self, container, blob):
         stream = BytesIO()
@@ -198,8 +239,8 @@ class TrainAIModel:
         stream.seek(0)
         return stream
 
-    async def resume_train_model(self, email, epochsNumbers, modelPath, container):
-        self.__encode_target__()
+    async def resume_train_model(self, email, epochsNumbers, modelPath, container, encodedClasses):
+        self.__encode_target__(encodedClasses, resume=True)
         self.__split_df__(self.df)
         await self.__define_resume_model__(modelPath, container)
 
@@ -271,35 +312,3 @@ class TrainAIModel:
             self.loss = loss.item()
 
             logging.info(f'Epoch {epoch + 1}, Loss: {loss.item()}, Validation Accuracy: {accuracy}')
-
-    def __loadModel__(self, path):
-        self.model = CustomClassifier(self.input_size, self.input_size*4, self.output_classes)
-        self.model.load_state_dict(torch.load(os.path.join(path, "model_data.pt"), weights_only=True))
-        self.optimizer = optim.Adam(self.model.parameters(), lr=0.0001)
-        self.optimizer.load_state_dict(torch.load(os.path.join(path, "model_optimizer_data.pt"), weights_only=True))
-
-
-    async def inference_model(self, path):
-        self.__loadModel__(path)
-
-        pred_labels = []
-
-        self.model.eval()
-        with torch.no_grad():
-            for idx, row in self.df.iterrows():
-                features = torch.tensor(row.values).float()
-                outputs = self.model(features)
-                _, predicted = torch.max(outputs, 0)
-                predicted = predicted.item()
-                pred_labels.append(predicted)
-
-        pred_values = []
-        for i in range(len(pred_labels)):
-            pred_value = pred_labels[i]
-
-            if str(pred_value) in self.classesWithEncoding:
-                pred_values.append(self.classesWithEncoding[str(pred_value)])
-            else:
-                pred_values.append("CAN'T BE PREDCITED")
-
-        return pred_values

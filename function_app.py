@@ -178,7 +178,7 @@ async def resumeTrainRouteFunc(res):
         container = blob_service_client.get_container_client(containerName)
 
         # Embedding the file (which is saved in chunks) and saving file on path with training_data.csv file
-        pathsOfTrainingFiles, headers = await EmbeddingFile(blob_service_client, containerName, container, head, res, resume=True)
+        pathsOfTrainingFiles, headers, encodedClasses = await EmbeddingFile(blob_service_client, containerName, container, head, res, resume=True)
 
         await publishMsgOnRabbitMQ({"task": "training", "condition": "preparing"}, res["email"])
 
@@ -212,7 +212,7 @@ async def resumeTrainRouteFunc(res):
         targetColumnName = df.iloc[0, 0]
         df.drop([0], inplace=True)
 
-        await trainingResumeFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"], res["epochsNumbers"], headers, targetColumnName)
+        await trainingResumeFunc(df, res["email"], container, pathsOfTrainingFiles[0], res["embedder"], res["label"], res["user_id"], res["epochsNumbers"], headers, targetColumnName, encodedClasses)
 
     except Exception as e:
         log.error("json error: ")

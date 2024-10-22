@@ -35,7 +35,7 @@ class ResidualBlock(nn.Module):
 class CustomClassifier(nn.Module):
     def __init__(self, input_size, output_size, hidden_dim=None):
         if not hidden_dim:
-            hidden_dim = input_size * 4
+            hidden_dim = input_size * 2
         super(CustomClassifier, self).__init__()
         self.block1 = ResidualBlock(input_size, hidden_dim)
         self.block2 = ResidualBlock(hidden_dim, hidden_dim)

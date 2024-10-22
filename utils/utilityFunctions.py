@@ -15,7 +15,7 @@ async def EmbeddingFile(blob_service_client, containerName, container, head, res
     blobs = container.list_blob_names()
 
     if resume:
-        embedder = await getEmbedderFromModelFile(blobs=blobs, container=container)
+        embedder, encodedClasses = await getEmbedderFromModelFile(blobs=blobs, container=container)
     else:
         embedder = res["embedder"]
 
@@ -49,6 +49,10 @@ async def EmbeddingFile(blob_service_client, containerName, container, head, res
 
             # create data frame from list
             df = pd.DataFrame(blob_list)
+
+            # stripping the space from start and end of each element
+            df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
+
             # getting columns
             columns = df.columns
             # getting index for the targetColumn
@@ -94,7 +98,11 @@ async def EmbeddingFile(blob_service_client, containerName, container, head, res
     else:
         await publishMsgOnRabbitMQ({"task": "embedding", "condition": "completed"}, res["email"])
 
-    return pathsOfTrainingData, headers.tolist()
+    if resume:
+        return pathsOfTrainingData, headers.tolist(), encodedClasses
+    else:
+        return pathsOfTrainingData, headers.tolist()
+
 
 async def trainingFunc(df, email, container, embeddingFilePath, embedder, label, id, epochsNumbers, headers, targetColumnName):
     try:
@@ -118,7 +126,7 @@ async def trainingFunc(df, email, container, embeddingFilePath, embedder, label,
         log.error(e)
         await publishMsgOnRabbitMQ({"task": "training", "condition": "failed"}, email)
 
-async def trainingResumeFunc(df, email, container, embeddingFilePath, embedder, label, id, epochsNumbers, headers, targetColumnName):
+async def trainingResumeFunc(df, email, container, embeddingFilePath, embedder, label, id, epochsNumbers, headers, targetColumnName, encodedClasses):
     try:
         log.info(df.columns)
         log.info(df.columns[0])
@@ -129,7 +137,7 @@ async def trainingResumeFunc(df, email, container, embeddingFilePath, embedder, 
 
         AIModel = TrainAIModel(targetColumnName, df, encodedClasses=None, mode="train")
 
-        await AIModel.resume_train_model(email, epochsNumbers, path, container)
+        await AIModel.resume_train_model(email, epochsNumbers, path, container, encodedClasses)
 
         await saving_model_data(AIModel, embedder, container, path, email, label, id, headers, resume=True)
 
@@ -154,6 +162,8 @@ def get_or_create_container(blob_service_client, container_name):
 async def saving_model_data(AIModel: TrainAIModel, embedder:str, container, path, email, label, id, headers = [], resume = False):
     try:
         await publishMsgOnRabbitMQ({"task": "saving", "condition": "continue"}, email)
+
+        log.info(AIModel.model)
         
         # Saving model data directly to Azure Blob Storage
         model_data = BytesIO()
@@ -205,7 +215,7 @@ async def getEmbedderFromModelFile(blobs, container):
             # Convert string to Python list
             blob_list = json.loads(blob_str)
 
-            return blob_list["embedder"]
+            return blob_list["embedder"], blob_list["encodedClasses"]
     return ""
 
 
