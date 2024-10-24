@@ -1,6 +1,8 @@
 from ai_files.EmbeddingModel import BAIEmbeddingModel, OpenAIEmbeddingModel
 import logging as log
 
+from utils.RabbitMQ import publishMsgOnRabbitMQ
+
 
 
 embedding_model = BAIEmbeddingModel()
@@ -39,7 +41,7 @@ def embeddingTexts(arr, embedder="openai"):
 
     return data
 
-def embdeddingFunc(df, h, embedder="OpenAI", columns = [], selectedColumnIndex = 0):
+async def embdeddingFunc(df, h, embedder="OpenAI", columns = [], selectedColumnIndex = 0, rowCount=1, totalRowCount=0, email=""):
     log.info("embedding start")
     data = []
 
@@ -87,7 +89,14 @@ def embdeddingFunc(df, h, embedder="OpenAI", columns = [], selectedColumnIndex =
             targetColumns = []
             rowTexts = []
 
-    return data, headers
+        rowCount += 1
+        embedding_percentage = rowCount / totalRowCount * 100
+
+        # message for telling the embedding is done on a specific blob
+        await publishMsgOnRabbitMQ({"task": "embedding", "condition": "continue", "percentage": str(embedding_percentage)}, email)
+
+
+    return data, headers, rowCount
 
 def embeddingFuncForInference(df, embedder="OpenAI", columns = []):
     data = []

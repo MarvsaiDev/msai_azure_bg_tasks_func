@@ -11,6 +11,8 @@ from utils.RabbitMQ import publishMsgOnRabbitMQ
 from utils.embeddingFunctions import embdeddingFunc
 
 async def EmbeddingFile(blob_service_client, containerName, container, head, res, resume = False):
+    # this variable is used for showing the percentage of embedding
+    rowCount = 0
     # getting all blobs paths in user's container
     blobs = container.list_blob_names()
 
@@ -68,7 +70,7 @@ async def EmbeddingFile(blob_service_client, containerName, container, head, res
             await publishMsgOnRabbitMQ({"embedding on blob": str(blob)}, res["email"])
 
             # embedding the blob data and get list of embedded data
-            encoded_df, headers = embdeddingFunc(df, headers, embedder=embedder, columns=columns, selectedColumnIndex=selectedColumnIndex)
+            encoded_df, headers, rowCount = await embdeddingFunc(df, headers, embedder=embedder, columns=columns, selectedColumnIndex=selectedColumnIndex, rowCount=rowCount, totalRowCount=res["totalRowCount"], email=res["email"])
 
             # message for telling the embedding is done on a specific blob
             await publishMsgOnRabbitMQ({"embedding done on": str(blob)}, res["email"])
