@@ -7,3 +7,5 @@ local.settings.json
 test
 .venv
 model_data
+__pycache__/
+__pycache__

@@ -3,7 +3,7 @@
   "extensions": {
     "durableTask": {
         "hubName": "DurableHub",
-        "extendedSessionsEnabled": true,
+        "extendedSessionsEnabled": false,
         "extendedSessionIdleTimeoutInSeconds": 86400
     },
     "queues": {
