@@ -1,11 +1,10 @@
-# import json
+import json
 import os
 from azure.storage.blob import BlobServiceClient
-# import pandas as pd
-# import logging as log
+import pandas as pd
+import logging as log
 from utils.RabbitMQ import publishMsgOnRabbitMQ
-# from utils.utilityFunctions import EmbeddingFile, extract_lowercase_and_numbers, get_or_create_container, trainingFunc
-from utils.utilityFunctions import extract_lowercase_and_numbers, get_or_create_container
+from utils.utilityFunctions import EmbeddingFile, extract_lowercase_and_numbers, get_or_create_container, trainingFunc
 
 
 async def trainFunc(res):
@@ -34,7 +33,7 @@ async def trainFunc(res):
         if (len(containerName) > 62):
             containerName = containerName[: 62]
 
-        get_or_create_container(blob_service_client, containerName)
+        await get_or_create_container(blob_service_client, containerName)
 
         await publishMsgOnRabbitMQ({"container": "created", "container_name": containerName}, res["email"])
 
@@ -42,7 +41,7 @@ async def trainFunc(res):
         # get container client
         container = blob_service_client.get_container_client(containerName)
 
-        Embedding the file (which is saved in chunks) and saving file on path with training_data.csv file
+        # Embedding the file (which is saved in chunks) and saving file on path with training_data.csv file
         pathsOfTrainingFiles, headers = await EmbeddingFile(blob_service_client, containerName, container, head, res)
 
         await publishMsgOnRabbitMQ({"task": "training", "condition": "preparing"}, res["email"])

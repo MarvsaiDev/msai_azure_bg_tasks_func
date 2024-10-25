@@ -154,9 +154,18 @@ def extract_lowercase_and_numbers(input_string):
     result = ''.join(char for char in input_string if char.islower() or char.isdigit())
     return result
 
-def get_or_create_container(blob_service_client, container_name):
+async def get_or_create_container(blob_service_client, container_name):
     try:
-        blob_service_client.create_container(container_name)
+        containers_names = blob_service_client.list_containers()
+        container_found = False
+
+        for name in containers_names:
+            if (name == container_name):
+                container_found = True
+                break
+
+        if (container_found == False):
+            blob_service_client.create_container(container_name)
     except Exception as e:
         print(f"the exception for creating container {e}")
 
