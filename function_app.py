@@ -35,7 +35,7 @@ def train(context):
 async def hello(res: dict):
     # Process the input dictionary and perform the required task
     log.info(type(res))
-    log.info(f"Activity function 100 received input: {res}")
+    log.info(f"Activity function 1 received input: {res}")
 
     await trainFunc(res)
     
